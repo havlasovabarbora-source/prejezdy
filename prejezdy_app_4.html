@@ -1,0 +1,1035 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Optimalizátor přejezdů</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Outfit:wght@400;600;700;800&family=Inter:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:        #0a0e1a;
+    --surface:   #111827;
+    --surface2:  #1a2336;
+    --border:    #1f2d45;
+    --accent:    #3b82f6;
+    --accent2:   #6366f1;
+    --green:     #10b981;
+    --orange:    #f59e0b;
+    --red:       #ef4444;
+    --purple:    #a855f7;
+    --text:      #e2e8f0;
+    --text-dim:  #64748b;
+    --text-mid:  #94a3b8;
+    --mono:      'DM Mono', monospace;
+    --sans:      'Inter', sans-serif;
+    --display:   'Outfit', sans-serif;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 14px;
+    line-height: 1.6;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ── Grid background ── */
+  body::before {
+    content: '';
+    position: fixed; inset: 0; z-index: 0;
+    background-image:
+      linear-gradient(rgba(59,130,246,.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(59,130,246,.04) 1px, transparent 1px);
+    background-size: 48px 48px;
+    pointer-events: none;
+  }
+
+  .wrap { position: relative; z-index: 1; max-width: 960px; margin: 0 auto; padding: 48px 24px 80px; }
+
+  /* ── Header ── */
+  .header { margin-bottom: 52px; }
+  .header-badge {
+    display: inline-flex; align-items: center; gap: 8px;
+    font-family: var(--mono); font-size: 11px; letter-spacing: .12em; text-transform: uppercase;
+    color: var(--accent); background: rgba(59,130,246,.1);
+    border: 1px solid rgba(59,130,246,.25); border-radius: 4px;
+    padding: 4px 10px; margin-bottom: 20px;
+  }
+  .header-badge::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); animation: pulse 2s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1}50%{opacity:.3} }
+
+  h1 {
+    font-family: var(--display); font-size: clamp(28px, 5vw, 44px);
+    font-weight: 800; line-height: 1.1;
+    background: linear-gradient(135deg, #e2e8f0 0%, #94a3b8 100%);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    margin-bottom: 12px;
+  }
+  .subtitle { color: var(--text-mid); font-size: 15px; max-width: 520px; }
+
+  /* ── Steps ── */
+  .steps { display: grid; gap: 16px; margin-bottom: 32px; }
+
+  .step {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px 28px;
+    transition: border-color .2s;
+    position: relative;
+    overflow: hidden;
+  }
+  .step::before {
+    content: '';
+    position: absolute; top: 0; left: 0; right: 0; height: 2px;
+    background: linear-gradient(90deg, var(--accent), var(--accent2));
+    opacity: 0; transition: opacity .2s;
+  }
+  .step.active { border-color: rgba(59,130,246,.4); }
+  .step.active::before { opacity: 1; }
+  .step.done { border-color: rgba(16,185,129,.3); }
+  .step.done::before { background: var(--green); opacity: 1; }
+
+  .step-header { display: flex; align-items: center; gap: 14px; margin-bottom: 20px; }
+  .step-num {
+    width: 32px; height: 32px; border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--mono); font-size: 13px; font-weight: 500;
+    background: var(--surface2); border: 1px solid var(--border);
+    color: var(--text-dim); flex-shrink: 0;
+    transition: all .2s;
+  }
+  .step.active .step-num { background: rgba(59,130,246,.15); border-color: var(--accent); color: var(--accent); }
+  .step.done .step-num { background: rgba(16,185,129,.15); border-color: var(--green); color: var(--green); }
+  .step-title { font-family: var(--display); font-size: 16px; font-weight: 700; }
+  .step-desc { font-size: 13px; color: var(--text-mid); margin-top: 2px; }
+
+  /* ── File upload grid ── */
+  .file-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+
+  .file-zone {
+    border: 1.5px dashed var(--border);
+    border-radius: 10px;
+    padding: 20px 16px;
+    text-align: center;
+    cursor: pointer;
+    transition: all .2s;
+    position: relative;
+    background: rgba(255,255,255,.01);
+  }
+  .file-zone:hover { border-color: var(--accent); background: rgba(59,130,246,.04); }
+  .file-zone.loaded { border-color: var(--green); border-style: solid; background: rgba(16,185,129,.04); }
+  .file-zone input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
+
+  .file-icon { font-size: 28px; margin-bottom: 10px; display: block; }
+  .file-label { font-family: var(--display); font-size: 13px; font-weight: 700; color: var(--text); margin-bottom: 4px; }
+  .file-hint  { font-family: var(--mono); font-size: 11px; color: var(--text-dim); }
+  .file-status {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-family: var(--mono); font-size: 11px;
+    color: var(--green); margin-top: 8px;
+    opacity: 0; transition: opacity .3s;
+  }
+  .file-status.show { opacity: 1; }
+
+  /* ── Parameter controls ── */
+  .params { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media(max-width:600px) { .params { grid-template-columns: 1fr; } }
+
+  .param-card {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 18px;
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  }
+  .param-label { font-size: 13px; font-weight: 500; color: var(--text); }
+  .param-sub   { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+
+  /* Toggle */
+  .toggle { position: relative; width: 44px; height: 24px; flex-shrink: 0; }
+  .toggle input { opacity: 0; width: 0; height: 0; }
+  .toggle-slider {
+    position: absolute; inset: 0; background: var(--surface);
+    border: 1px solid var(--border); border-radius: 24px; cursor: pointer;
+    transition: all .2s;
+  }
+  .toggle-slider::after {
+    content: ''; position: absolute; top: 3px; left: 3px;
+    width: 16px; height: 16px; border-radius: 50%;
+    background: var(--text-dim); transition: all .2s;
+  }
+  .toggle input:checked + .toggle-slider { background: rgba(59,130,246,.2); border-color: var(--accent); }
+  .toggle input:checked + .toggle-slider::after { background: var(--accent); transform: translateX(20px); }
+
+  /* ── Run button ── */
+  .run-btn {
+    width: 100%; padding: 16px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    border: none; border-radius: 10px;
+    font-family: var(--display); font-size: 16px; font-weight: 700;
+    color: white; cursor: pointer;
+    transition: all .2s; margin-top: 8px;
+    position: relative; overflow: hidden;
+  }
+  .run-btn:hover { transform: translateY(-1px); box-shadow: 0 8px 24px rgba(59,130,246,.3); }
+  .run-btn:active { transform: translateY(0); }
+  .run-btn:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+  .run-btn .btn-inner { display: flex; align-items: center; justify-content: center; gap: 10px; }
+
+  /* ── Progress ── */
+  .progress-wrap { margin-top: 20px; display: none; }
+  .progress-wrap.show { display: block; }
+
+  .progress-bar-bg {
+    background: var(--surface2); border-radius: 4px; height: 4px;
+    overflow: hidden; margin-bottom: 10px;
+  }
+  .progress-bar {
+    height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent2));
+    border-radius: 4px; width: 0%; transition: width .4s ease;
+  }
+  .progress-log {
+    font-family: var(--mono); font-size: 12px; color: var(--text-dim);
+    max-height: 120px; overflow-y: auto;
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 8px; padding: 12px 14px;
+  }
+  .progress-log .log-line { margin-bottom: 4px; }
+  .progress-log .log-line.ok  { color: var(--green); }
+  .progress-log .log-line.warn{ color: var(--orange); }
+  .progress-log .log-line.err { color: var(--red); }
+
+  /* ── Results ── */
+  .results { display: none; margin-top: 32px; }
+  .results.show { display: block; }
+
+  .result-header {
+    font-family: var(--display); font-size: 22px; font-weight: 800;
+    margin-bottom: 20px;
+    background: linear-gradient(135deg, var(--green), #34d399);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+
+  .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 24px; }
+  .stat-card {
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 10px; padding: 16px;
+    text-align: center;
+  }
+  .stat-value { font-family: var(--display); font-size: 26px; font-weight: 800; color: var(--text); }
+  .stat-value.green { color: var(--green); }
+  .stat-value.orange{ color: var(--orange); }
+  .stat-value.red   { color: var(--red); }
+  .stat-label { font-family: var(--mono); font-size: 11px; color: var(--text-dim); margin-top: 4px; text-transform: uppercase; letter-spacing: .08em; }
+
+  .download-btn {
+    display: inline-flex; align-items: center; gap: 10px;
+    padding: 14px 28px;
+    background: linear-gradient(135deg, var(--green), #059669);
+    border: none; border-radius: 10px;
+    font-family: var(--display); font-size: 15px; font-weight: 700;
+    color: white; cursor: pointer; text-decoration: none;
+    transition: all .2s;
+  }
+  .download-btn:hover { transform: translateY(-1px); box-shadow: 0 8px 24px rgba(16,185,129,.3); }
+
+  .warnings-box {
+    background: rgba(239,68,68,.05);
+    border: 1px solid rgba(239,68,68,.2);
+    border-radius: 10px; padding: 18px 20px; margin-top: 20px;
+  }
+  .warnings-title {
+    font-family: var(--display); font-size: 14px; font-weight: 700;
+    color: var(--red); margin-bottom: 12px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .warn-item {
+    font-family: var(--mono); font-size: 12px;
+    color: var(--text-mid); padding: 6px 0;
+    border-bottom: 1px solid rgba(239,68,68,.1);
+    display: flex; gap: 10px; align-items: flex-start;
+  }
+  .warn-item:last-child { border-bottom: none; }
+  .warn-badge {
+    font-size: 10px; padding: 2px 7px; border-radius: 3px; flex-shrink: 0;
+    font-weight: 500;
+  }
+  .warn-badge.struct { background: rgba(239,68,68,.2); color: var(--red); }
+  .warn-badge.cap    { background: rgba(245,158,11,.2); color: var(--orange); }
+  .warn-badge.min2   { background: rgba(168,85,247,.2); color: var(--purple); }
+
+  /* ── Loading screen ── */
+  .pyodide-loading {
+    position: fixed; inset: 0; z-index: 100;
+    background: var(--bg);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 20px;
+    transition: opacity .5s;
+  }
+  .pyodide-loading.hidden { opacity: 0; pointer-events: none; }
+  .loading-logo { font-family: var(--display); font-size: 32px; font-weight: 800; color: var(--text); }
+  .loading-sub  { font-family: var(--mono); font-size: 13px; color: var(--text-dim); }
+  .spinner {
+    width: 40px; height: 40px; border: 2px solid var(--border);
+    border-top-color: var(--accent); border-radius: 50%;
+    animation: spin .8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── Misc ── */
+  .divider { height: 1px; background: var(--border); margin: 8px 0; }
+  .tag {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-family: var(--mono); font-size: 10px; text-transform: uppercase; letter-spacing: .1em;
+    padding: 3px 8px; border-radius: 3px;
+  }
+  .tag.blue   { background: rgba(59,130,246,.15); color: var(--accent); border: 1px solid rgba(59,130,246,.2); }
+  .tag.green  { background: rgba(16,185,129,.15);  color: var(--green);  border: 1px solid rgba(16,185,129,.2); }
+  .tag.purple { background: rgba(168,85,247,.15);  color: var(--purple); border: 1px solid rgba(168,85,247,.2); }
+</style>
+</head>
+<body>
+
+<!-- Loading screen -->
+<div class="pyodide-loading" id="loadingScreen">
+  <div class="loading-logo">Přejezdy</div>
+  <div class="spinner"></div>
+  <div class="loading-sub" id="loadingMsg">Načítám Python engine (Pyodide)…</div>
+</div>
+
+<div class="wrap">
+  <div class="header">
+    <div class="header-badge">Inventurní optimalizátor</div>
+    <h1>Plánování přejezdů<br>mezi pobočkami</h1>
+    <p class="subtitle">Nahrajte tři Excel soubory, nastavte parametry a systém automaticky vygeneruje optimální plán přejezdů splňující všechna pravidla.</p>
+  </div>
+
+  <!-- STEP 1: Upload -->
+  <div class="steps">
+    <div class="step active" id="step1">
+      <div class="step-header">
+        <div class="step-num">01</div>
+        <div>
+          <div class="step-title">Nahrání dat</div>
+          <div class="step-desc">Tři Excel soubory s daty poboček, historií a vzdálenostmi</div>
+        </div>
+      </div>
+      <div class="file-grid">
+
+        <div class="file-zone" id="zone-inv">
+          <input type="file" id="file-inv" accept=".xlsx,.xls" onchange="handleFile(this,'inv')">
+          <span class="file-icon">📋</span>
+          <div class="file-label">Data inventur</div>
+          <div class="file-hint">Data_nove_INV.xlsx</div>
+          <div class="file-status" id="status-inv">✓ Nahráno</div>
+        </div>
+
+        <div class="file-zone" id="zone-hist">
+          <input type="file" id="file-hist" accept=".xlsx,.xls" onchange="handleFile(this,'hist')">
+          <span class="file-icon">📜</span>
+          <div class="file-label">Historie přejezdů</div>
+          <div class="file-hint">historie_prejezdu.xlsx</div>
+          <div class="file-status" id="status-hist">✓ Nahráno</div>
+        </div>
+
+        <div class="file-zone" id="zone-dist">
+          <input type="file" id="file-dist" accept=".xlsx,.xls" onchange="handleFile(this,'dist')">
+          <span class="file-icon">🗺️</span>
+          <div class="file-label">Vzdálenosti</div>
+          <div class="file-hint">vzdalenosti_mezi_pobockami.xlsx</div>
+          <div class="file-status" id="status-dist">✓ Nahráno</div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- STEP 2: Parameters -->
+    <div class="step" id="step2">
+      <div class="step-header">
+        <div class="step-num">02</div>
+        <div>
+          <div class="step-title">Parametry optimalizace</div>
+          <div class="step-desc">Nastavte pravidla pro generování plánu</div>
+        </div>
+      </div>
+      <div class="params">
+        <div class="param-card">
+          <div>
+            <div class="param-label">Přejezdy mimo region</div>
+            <div class="param-sub">Zabraňuje pomoci spřátelených poboček</div>
+          </div>
+          <label class="toggle">
+            <input type="checkbox" id="crossRegion" checked>
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+        <div class="param-card">
+          <div>
+            <div class="param-label">Max. dlouhých tras</div>
+            <div class="param-sub">Trasy 2,5–3,25h (max povoleno)</div>
+          </div>
+          <div style="font-family:var(--mono);font-size:20px;font-weight:500;color:var(--accent)">8</div>
+        </div>
+        <div class="param-card">
+          <div>
+            <div class="param-label">Standardní max. čas</div>
+            <div class="param-sub">Limit pro běžné přejezdy</div>
+          </div>
+          <div style="font-family:var(--mono);font-size:18px;font-weight:500;color:var(--text)">2,5 h</div>
+        </div>
+        <div class="param-card">
+          <div>
+            <div class="param-label">Absolut. max. čas</div>
+            <div class="param-sub">Nikdy delší než toto</div>
+          </div>
+          <div style="font-family:var(--mono);font-size:18px;font-weight:500;color:var(--text)">3,25 h</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- STEP 3: Run -->
+    <div class="step" id="step3">
+      <div class="step-header">
+        <div class="step-num">03</div>
+        <div>
+          <div class="step-title">Generování plánu</div>
+          <div class="step-desc">Algoritmus vyřeší optimální přiřazení a vygeneruje Excel</div>
+        </div>
+      </div>
+
+      <button class="run-btn" id="runBtn" onclick="runOptimization()" disabled>
+        <span class="btn-inner">
+          <span id="btnIcon">⚡</span>
+          <span id="btnText">Nahrajte všechny soubory</span>
+        </span>
+      </button>
+
+      <div class="progress-wrap" id="progressWrap">
+        <div class="progress-bar-bg"><div class="progress-bar" id="progressBar"></div></div>
+        <div class="progress-log" id="progressLog"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Results -->
+  <div class="results" id="results">
+    <div class="result-header">✅ Plán vygenerován</div>
+
+    <div class="stat-grid" id="statGrid"></div>
+
+    <a class="download-btn" id="downloadBtn" href="#" download="prejezdy_vysledek.xlsx">
+      <span>⬇</span> Stáhnout Excel výsledek
+    </a>
+
+    <div class="warnings-box" id="warningsBox" style="display:none">
+      <div class="warnings-title">⚠ Nesplněné požadavky</div>
+      <div id="warningsList"></div>
+    </div>
+  </div>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/pyodide/v0.25.1/full/pyodide.js"></script>
+<script>
+
+// ── State ──────────────────────────────────────────────────────────────────
+const files = { inv: null, hist: null, dist: null };
+let pyodide = null;
+let resultBlob = null;
+
+// ── Pyodide init ───────────────────────────────────────────────────────────
+async function initPyodide() {
+  try {
+    setLoadingMsg('Načítám Python engine…');
+    pyodide = await loadPyodide({ indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.25.1/full/' });
+    setLoadingMsg('Instaluji pandas…');
+    await pyodide.loadPackage(['pandas', 'micropip']);
+    setLoadingMsg('Instaluji openpyxl…');
+    await pyodide.runPythonAsync(`
+import micropip
+await micropip.install('openpyxl')
+`);
+    setLoadingMsg('Připraveno!');
+    await new Promise(r => setTimeout(r, 400));
+    document.getElementById('loadingScreen').classList.add('hidden');
+  } catch(e) {
+    setLoadingMsg('Chyba: ' + e.message);
+  }
+}
+
+function setLoadingMsg(msg) {
+  document.getElementById('loadingMsg').textContent = msg;
+}
+
+// ── File handling ──────────────────────────────────────────────────────────
+function handleFile(input, key) {
+  const file = input.files[0];
+  if (!file) return;
+  files[key] = file;
+  document.getElementById('zone-' + key).classList.add('loaded');
+  const st = document.getElementById('status-' + key);
+  st.textContent = '✓ ' + file.name;
+  st.classList.add('show');
+  checkReady();
+}
+
+function checkReady() {
+  const allLoaded = files.inv && files.hist && files.dist;
+  const btn = document.getElementById('runBtn');
+  const txt = document.getElementById('btnText');
+  btn.disabled = !allLoaded;
+  txt.textContent = allLoaded ? 'Generovat plán přejezdů' : 'Nahrajte všechny soubory';
+  if (allLoaded) {
+    document.getElementById('step2').classList.add('active');
+    document.getElementById('step3').classList.add('active');
+  }
+}
+
+// ── Read file as Uint8Array ────────────────────────────────────────────────
+function readFile(file) {
+  return new Promise((res, rej) => {
+    const reader = new FileReader();
+    reader.onload = e => res(new Uint8Array(e.target.result));
+    reader.onerror = rej;
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+// ── Progress log ──────────────────────────────────────────────────────────
+function logLine(msg, cls='') {
+  const log = document.getElementById('progressLog');
+  const div = document.createElement('div');
+  div.className = 'log-line ' + cls;
+  div.textContent = msg;
+  log.appendChild(div);
+  log.scrollTop = log.scrollHeight;
+}
+
+function setProgress(pct) {
+  document.getElementById('progressBar').style.width = pct + '%';
+}
+
+// ── Main optimization ──────────────────────────────────────────────────────
+async function runOptimization() {
+  const btn = document.getElementById('runBtn');
+  btn.disabled = true;
+  document.getElementById('btnText').textContent = 'Zpracovávám…';
+  document.getElementById('progressWrap').classList.add('show');
+  document.getElementById('progressLog').innerHTML = '';
+  document.getElementById('results').classList.remove('show');
+  setProgress(0);
+
+  try {
+    logLine('📂 Načítám soubory…');
+    const [invData, histData, distData] = await Promise.all([
+      readFile(files.inv), readFile(files.hist), readFile(files.dist)
+    ]);
+    setProgress(10);
+    logLine('✓ Soubory načteny', 'ok');
+
+    // Write files into Pyodide FS
+    pyodide.FS.writeFile('/inv.xlsx',  invData);
+    pyodide.FS.writeFile('/hist.xlsx', histData);
+    pyodide.FS.writeFile('/dist.xlsx', distData);
+    setProgress(20);
+
+    const crossRegion = document.getElementById('crossRegion').checked;
+    logLine('⚙️  Spouštím optimalizaci (přejezdy mimo region: ' + (crossRegion ? 'ANO' : 'NE') + ')…');
+    setProgress(30);
+
+    // Run Python
+    const result = await pyodide.runPythonAsync(buildPythonCode(crossRegion));
+    setProgress(80);
+    logLine('✓ Optimalizace dokončena', 'ok');
+
+    // Parse result JSON
+    const res = JSON.parse(result);
+    setProgress(90);
+    logLine(`📊 Přiřazeno ${res.filled} / ${res.total} lidí (${res.pct}%)`
+      + (res.filled < res.total ? '' : ''), res.filled >= res.total ? 'ok' : 'warn');
+    logLine(`📋 Celkem přejezdů: ${res.trips}`, 'ok');
+    if (res.warnings > 0) logLine(`⚠ Varování: ${res.warnings} nesplněných požadavků`, 'warn');
+
+    // Get Excel bytes
+    const xlsxBytes = pyodide.FS.readFile('/output.xlsx');
+    const blob = new Blob([xlsxBytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = URL.createObjectURL(blob);
+    document.getElementById('downloadBtn').href = url;
+    setProgress(100);
+    logLine('✅ Excel soubor připraven ke stažení', 'ok');
+
+    showResults(res);
+
+    document.getElementById('step3').classList.add('done');
+    btn.disabled = false;
+    document.getElementById('btnText').textContent = 'Generovat znovu';
+
+  } catch(e) {
+    logLine('❌ Chyba: ' + e.message, 'err');
+    console.error(e);
+    btn.disabled = false;
+    document.getElementById('btnText').textContent = 'Zkusit znovu';
+  }
+}
+
+function showResults(res) {
+  const pctNum = parseFloat(res.pct);
+  document.getElementById('statGrid').innerHTML = `
+    <div class="stat-card">
+      <div class="stat-value ${pctNum>=100?'green':pctNum>=90?'orange':'red'}">${res.pct}%</div>
+      <div class="stat-label">Pokrytí požadavků</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value">${res.filled}<span style="font-size:16px;color:var(--text-dim)"> / ${res.total}</span></div>
+      <div class="stat-label">Přiřazeno lidí</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value">${res.trips}</div>
+      <div class="stat-label">Přejezdů celkem</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value ${res.long_trips>0?'orange':'green'}">${res.long_trips}<span style="font-size:16px;color:var(--text-dim)"> / 8</span></div>
+      <div class="stat-label">Dlouhé trasy (>2.5h)</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value ${res.warnings>0?'red':'green'}">${res.warnings}</div>
+      <div class="stat-label">Varování</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value purple" style="color:var(--purple)">${res.log_trips}</div>
+      <div class="stat-label">LOG záloha použita</div>
+    </div>
+  `;
+
+  const wb = document.getElementById('warningsBox');
+  const wl = document.getElementById('warningsList');
+  if (res.warnings > 0 && res.warn_details) {
+    wb.style.display = 'block';
+    wl.innerHTML = res.warn_details.map(w => {
+      const isStruct = w.reason.includes('Strukturální');
+      const isMin2   = w.reason.includes('min. 2');
+      const cls      = isStruct ? 'struct' : isMin2 ? 'min2' : 'cap';
+      const label    = isStruct ? 'Strukturální' : isMin2 ? 'Min. 2 osoby' : 'Kapacita';
+      return `<div class="warn-item">
+        <span class="warn-badge ${cls}">${label}</span>
+        <span>${w.termin} | <strong>${w.name}</strong> (${w.id}) — nesplněno ${w.missing}/${w.total}</span>
+      </div>`;
+    }).join('');
+  } else {
+    wb.style.display = 'none';
+  }
+
+  document.getElementById('results').classList.add('show');
+  document.getElementById('results').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+// ── Embedded Python optimization code ─────────────────────────────────────
+function buildPythonCode(crossRegion) {
+  return `
+import pandas as pd
+import json
+from collections import defaultdict
+import io
+
+LOG_BRANCH = 'S025'
+
+def build_distance_lookup(dist):
+    lookup = {}
+    for _, row in dist.iterrows():
+        h = row['Čas (h)']
+        if h <= 3.25:
+            lookup[(str(row['Výchozí pobočka']), str(row['Cílová pobočka']))] = {
+                'km': row['Vzdálenost (km)'], 'h': h
+            }
+    return lookup
+
+def optimize(force_cross_region=${crossRegion ? 'True' : 'False'}):
+    inv  = pd.read_excel('/inv.xlsx',  dtype={'Č.pob': str})
+    hist = pd.read_excel('/hist.xlsx', dtype={'Číslo pobočky': str, 'Číslo pobočky2': str})
+    dist = pd.read_excel('/dist.xlsx', dtype={'Výchozí pobočka': str, 'Cílová pobočka': str})
+
+    dist_lookup = build_distance_lookup(dist)
+    forbidden = set(zip(hist['Číslo pobočky'].astype(str), hist['Číslo pobočky2'].astype(str)))
+
+    inv = inv.dropna(subset=['Č.pob']).copy()
+    inv['Č.pob'] = inv['Č.pob'].astype(str)
+    inv['počet týmů'] = inv['počet týmů'].fillna(0).astype(int)
+    inv['Počet možných SO/OZ'] = inv['Počet možných SO/OZ'].fillna(0).astype(int)
+    inv['Region'] = inv['Region'].astype(str)
+    inv['Termín'] = pd.to_datetime(inv['Termín'])
+
+    region_map = dict(zip(inv['Č.pob'], inv['Region']))
+    name_map   = dict(zip(inv['Č.pob'], inv['Název pob.']))
+    termin_map = dict(zip(inv['Č.pob'], inv['Termín']))
+
+    global_supply = {row['Č.pob']: row['Počet možných SO/OZ']
+                     for _, row in inv.iterrows() if row['Počet možných SO/OZ'] > 0}
+    global_demand = {row['Č.pob']: row['počet týmů']
+                     for _, row in inv.iterrows() if row['počet týmů'] > 0}
+
+    long_trip_count = 0
+    all_assignments = []
+    warnings_list   = []
+    structural_notes = []
+    assigned_pairs  = set()
+
+    def is_valid(send, recv, ltc):
+        if send == recv: return False, None
+        if termin_map.get(send) == termin_map.get(recv): return False, None
+        if force_cross_region and region_map.get(send) == region_map.get(recv): return False, None
+        if (send, recv) in forbidden: return False, None
+        if frozenset([send, recv]) in assigned_pairs: return False, None
+        if send == LOG_BRANCH:
+            return True, {'km': 0, 'h': 0, 'is_long': False}
+        route = dist_lookup.get((send, recv))
+        if route is None: return False, None
+        h = route['h']
+        if h > 3.25: return False, None
+        is_long = h > 2.5
+        if is_long and ltc >= 8: return False, None
+        return True, {'km': route['km'], 'h': h, 'is_long': is_long}
+
+    def get_candidates(recv, supply_dict, ltc):
+        result = []
+        for send, avail in supply_dict.items():
+            if avail < 2: continue
+            ok, info = is_valid(send, recv, ltc)
+            if not ok: continue
+            result.append((send, info['h'], info['km'], info['is_long'], avail))
+        normal = sorted([c for c in result if c[0] != LOG_BRANCH], key=lambda x: x[1])
+        log_c  = [c for c in result if c[0] == LOG_BRANCH]
+        return normal + log_c
+
+    def score(recv, supply_dict, ltc):
+        cands = get_candidates(recv, supply_dict, ltc)
+        total = sum(min(c[4], global_demand.get(recv, 0)) for c in cands)
+        return (total - global_demand.get(recv, 0), len(cands))
+
+    for _ in range(8):
+        remaining = {r: d for r, d in global_demand.items() if d > 0}
+        if not remaining: break
+        receiver_list = sorted(remaining.keys(), key=lambda r: score(r, global_supply, long_trip_count))
+        changed = False
+        for recv in receiver_list:
+            if global_demand.get(recv, 0) <= 0: continue
+            candidates = get_candidates(recv, global_supply, long_trip_count)
+            for send, h, km, is_long, avail in candidates:
+                if global_demand.get(recv, 0) <= 0: break
+                if global_supply.get(send, 0) < 2: continue
+                n = min(global_supply[send], global_demand[recv])
+                if n < 2: continue
+                if is_long and long_trip_count >= 8: continue
+                if is_long: long_trip_count += 1
+                tstr = pd.Timestamp(termin_map[recv]).strftime('%d.%m.%Y')
+                tsend = pd.Timestamp(termin_map[send]).strftime('%d.%m.%Y') if send != LOG_BRANCH else '—'
+                cat = 'LOG záloha' if send == LOG_BRANCH else ('Dlouhá (>2.5h)' if is_long else 'Standardní (≤2.5h)')
+                all_assignments.append({
+                    'Termín inventury': tstr, 'Termín odesílatele': tsend,
+                    'Z pobočky (ID)': send, 'Z pobočky (název)': name_map.get(send, send),
+                    'Na pobočku (ID)': recv, 'Na pobočku (název)': name_map.get(recv, recv),
+                    'Počet lidí': n, 'Vzdálenost (km)': km,
+                    'Čas jízdy (h)': h, 'Kategorie trasy': cat
+                })
+                global_demand[recv]  -= n
+                global_supply[send]  -= n
+                assigned_pairs.add(frozenset([send, recv]))
+                changed = True
+        if not changed: break
+
+    for recv, rem in global_demand.items():
+        if rem <= 0: continue
+        orig = inv[inv['Č.pob']==recv]['počet týmů'].values
+        orig = int(orig[0]) if len(orig) else 0
+        recv_region = region_map.get(recv,'')
+        recv_termin = termin_map.get(recv)
+        valid = [s for s in inv['Č.pob'] if s != recv
+                 and termin_map.get(s) != recv_termin
+                 and (not force_cross_region or region_map.get(s) != recv_region)
+                 and (s, recv) not in forbidden
+                 and (s == LOG_BRANCH or dist_lookup.get((s, recv)) is not None)]
+        reason = ('Strukturální: žádný platný odesílatel' if not valid
+                  else 'Zbývá 1 člověk – pravidlo min. 2 osoby' if rem == 1
+                  else 'Nedostatečná volná kapacita')
+        if not valid:
+            structural_notes.append(f"{pd.Timestamp(recv_termin).strftime('%d.%m.%Y')} | {name_map.get(recv,recv)}")
+        warnings_list.append({
+            'termin': pd.Timestamp(recv_termin).strftime('%d.%m.%Y'),
+            'id': recv, 'name': name_map.get(recv,recv), 'region': recv_region,
+            'total': orig, 'filled': orig-rem, 'missing': rem,
+            'pct': round((orig-rem)/orig*100,1) if orig>0 else 100,
+            'reason': reason
+        })
+
+    return pd.DataFrame(all_assignments), inv, warnings_list, structural_notes, long_trip_count
+
+def build_excel(df, inv, warnings_list, structural_notes, long_used):
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.utils import get_column_letter
+
+    wb = Workbook()
+    C_DARK='1F3864'; C_MID='2E75B6'; C_LIGHT='D6E4F0'
+    C_GH='375623'; C_GL='C6EFCE'; C_GM='A9D18E'
+    C_ORA='FCE4D6'; C_RH='C00000'; C_RL='FFCCCC'
+    C_WHT='FFFFFF'; C_YEL='FFF2CC'; C_LOG='E8D5FF'
+
+    def hfont(color='FFFFFF', bold=True, sz=10):
+        return Font(bold=bold, color=color, name='Arial', size=sz)
+    def hfill(c):
+        return PatternFill('solid', start_color=c, fgColor=c)
+    def bord():
+        s = Side(style='thin', color='BFBFBF')
+        return Border(left=s, right=s, top=s, bottom=s)
+    def cw(ws, col, w):
+        ws.column_dimensions[get_column_letter(col)].width = w
+    def hrow(ws, rn, cols, bg, fg='FFFFFF', h=26):
+        for c, txt in enumerate(cols, 1):
+            cell = ws.cell(row=rn, column=c, value=txt)
+            cell.font = hfont(fg); cell.fill = hfill(bg)
+            cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+            cell.border = bord()
+        ws.row_dimensions[rn].height = h
+    def dc(ws, r, c, val, bg=C_WHT, bold=False, color='000000', center=True, fmt=None):
+        cell = ws.cell(row=r, column=c, value=val)
+        cell.fill = hfill(bg)
+        cell.font = Font(name='Arial', size=10, bold=bold, color=color)
+        cell.alignment = Alignment(horizontal='center' if center else 'left', vertical='center', wrap_text=True)
+        cell.border = bord()
+        if fmt: cell.number_format = fmt
+        return cell
+
+    inv_c = inv.dropna(subset=['Č.pob']).copy()
+    inv_c['Č.pob'] = inv_c['Č.pob'].astype(str)
+    inv_c['Termín'] = pd.to_datetime(inv_c['Termín'])
+    incoming = __import__('collections').defaultdict(list)
+    outgoing = __import__('collections').defaultdict(list)
+    for _, row in df.iterrows():
+        incoming[row['Na pobočku (ID)']].append(row)
+        outgoing[row['Z pobočky (ID)']].append(row)
+
+    def rbg(row):
+        cat = row['Kategorie trasy']
+        if cat == 'LOG záloha': return C_LOG
+        if cat == 'Dlouhá (>2.5h)': return C_ORA
+        return None
+
+    # Sheet 1: Přehled přejezdů
+    ws1 = wb.active; ws1.title = 'Přehled přejezdů'; ws1.freeze_panes = 'A2'
+    cols = ['Termín inventury','Termín odesílatele','Z pobočky (ID)','Z pobočky (název)',
+            'Na pobočku (ID)','Na pobočku (název)','Počet lidí','Vzdálenost (km)','Čas jízdy (h)','Kategorie trasy']
+    hrow(ws1, 1, cols, C_DARK)
+    for i, (_, row) in enumerate(df.iterrows()):
+        r = i + 2
+        bg = rbg(row) or (C_LIGHT if i%2==0 else C_WHT)
+        vals = [row['Termín inventury'], row['Termín odesílatele'], row['Z pobočky (ID)'],
+                row['Z pobočky (název)'], row['Na pobočku (ID)'], row['Na pobočku (název)'],
+                row['Počet lidí'], row['Vzdálenost (km)'], row['Čas jízdy (h)'], row['Kategorie trasy']]
+        for c, val in enumerate(vals, 1): dc(ws1, r, c, val, bg)
+    last = len(df)+2
+    ws1.merge_cells(f'A{last}:F{last}')
+    tc = ws1.cell(row=last, column=1, value='CELKEM LIDÍ')
+    tc.font = hfont(); tc.fill = hfill(C_MID); tc.alignment = Alignment(horizontal='right', vertical='center')
+    sc = ws1.cell(row=last, column=7, value=f'=SUM(G2:G{last-1})')
+    sc.font = hfont(); sc.fill = hfill(C_MID); sc.border = bord()
+    sc.alignment = Alignment(horizontal='center', vertical='center')
+    for col, w in enumerate([12,13,12,22,12,22,9,12,11,18], 1): cw(ws1, col, w)
+
+    # Sheet 2: Přehled po pobočkách
+    ws2 = wb.create_sheet('Přehled po pobočkách'); ws2.freeze_panes = 'A3'
+    ws2.merge_cells('A1:K1')
+    t = ws2.cell(row=1, column=1, value='PŘEHLED PŘEJEZDŮ PO POBOČKÁCH')
+    t.font = hfont(sz=13); t.fill = hfill(C_DARK); t.alignment = Alignment(horizontal='center', vertical='center')
+    ws2.row_dimensions[1].height = 30
+    cols2 = ['Pobočka (ID)','Název pobočky','Region','Termín inventury',
+             'Požadavek (lidé)','Splněno (lidé)','% splnění','Kapacita SO/OZ','Vysláno lidí','Volná kapacita','Status']
+    hrow(ws2, 2, cols2, C_MID)
+    r = 3
+    for _, branch in inv_c.iterrows():
+        bid = branch['Č.pob']
+        req = int(branch['počet týmů']) if pd.notna(branch['počet týmů']) else 0
+        cap = int(branch['Počet možných SO/OZ']) if pd.notna(branch['Počet možných SO/OZ']) else 0
+        tstr = branch['Termín'].strftime('%d.%m.%Y') if pd.notna(branch['Termín']) else ''
+        fulfilled = sum(x['Počet lidí'] for x in incoming.get(bid, []))
+        sent = sum(x['Počet lidí'] for x in outgoing.get(bid, []))
+        free = cap - sent
+        if req == 0: status='—'; bg = C_WHT if r%2==0 else C_LIGHT
+        elif fulfilled >= req: status='✅ Splněno'; bg = C_GL
+        elif fulfilled > 0: status='⚠️ Částečně'; bg = C_YEL
+        else: status='❌ Nesplněno'; bg = C_RL
+        vals = [bid, branch['Název pob.'], branch['Region'], tstr, req, fulfilled, None, cap, sent, free, status]
+        for c, val in enumerate(vals, 1):
+            if c == 7:
+                cell = dc(ws2, r, c, f'=F{r}/E{r}' if req>0 else 'N/A', bg)
+                if req > 0: cell.number_format = '0.0%'
+            else: dc(ws2, r, c, val, bg, center=(c!=2))
+        r += 1
+    for col, w in enumerate([12,26,9,12,12,11,10,12,11,12,13], 1): cw(ws2, col, w)
+
+    # Sheet 3: Detail pobočky
+    ws3 = wb.create_sheet('Detail pobočky')
+    ws3.merge_cells('A1:H1')
+    t = ws3.cell(row=1, column=1, value='DETAIL – KDO JEDE KAM A KDO PŘIJÍŽDÍ')
+    t.font = hfont(sz=13); t.fill = hfill(C_DARK); t.alignment = Alignment(horizontal='center', vertical='center')
+    ws3.row_dimensions[1].height = 30
+    r = 2
+    for _, branch in inv_c.iterrows():
+        bid = branch['Č.pob']; bname = branch['Název pob.']
+        tstr = branch['Termín'].strftime('%d.%m.%Y') if pd.notna(branch['Termín']) else ''
+        inc = incoming.get(bid, []); out = outgoing.get(bid, [])
+        req = int(branch['počet týmů']) if pd.notna(branch['počet týmů']) else 0
+        cap = int(branch['Počet možných SO/OZ']) if pd.notna(branch['Počet možných SO/OZ']) else 0
+        if not inc and not out: continue
+        ws3.merge_cells(f'A{r}:H{r}')
+        tc = ws3.cell(row=r, column=1, value=f'  📍 {bid} – {bname}  |  Termín: {tstr}  |  Požadavek: {req}  |  SO/OZ: {cap}')
+        tc.font = hfont(sz=11); tc.fill = hfill(C_MID); tc.alignment = Alignment(horizontal='left', vertical='center')
+        ws3.row_dimensions[r].height = 24; r += 1
+        if out:
+            ws3.merge_cells(f'A{r}:H{r}')
+            hc = ws3.cell(row=r, column=1, value='  ➤ JEDE NA POBOČKY:')
+            hc.font = hfont(C_DARK, sz=10); hc.fill = hfill(C_LIGHT); hc.alignment = Alignment(horizontal='left', vertical='center')
+            ws3.row_dimensions[r].height = 20; r += 1
+            sub = ['Na pobočku (ID)','Název','Region cíle','Počet lidí','Vzdálenost (km)','Čas jízdy (h)','Kategorie','Termín cíle']
+            for ci, txt in enumerate(sub, 1):
+                cell = ws3.cell(row=r, column=ci, value=txt)
+                cell.font = hfont('1F3864', sz=9); cell.fill = hfill('BDD7EE')
+                cell.alignment = Alignment(horizontal='center', wrap_text=True); cell.border = bord()
+            ws3.row_dimensions[r].height = 20; r += 1
+            tout = 0
+            for a in sorted(out, key=lambda x: x['Čas jízdy (h)']):
+                tgt = inv_c[inv_c['Č.pob']==a['Na pobočku (ID)']]
+                treg = tgt['Region'].values[0] if len(tgt) else ''
+                bg = rbg(a) or C_WHT
+                for ci, val in enumerate([a['Na pobočku (ID)'],a['Na pobočku (název)'],treg,
+                    a['Počet lidí'],a['Vzdálenost (km)'],a['Čas jízdy (h)'],a['Kategorie trasy'],a['Termín inventury']], 1):
+                    dc(ws3, r, ci, val, bg)
+                tout += a['Počet lidí']; r += 1
+            ws3.merge_cells(f'A{r}:D{r}')
+            tc2 = ws3.cell(row=r, column=1, value=f'  Celkem vysíláno: {tout} / {cap}  (volná: {cap-tout})')
+            tc2.font = hfont(C_DARK, sz=9, bold=False); tc2.fill = hfill(C_LIGHT); tc2.alignment = Alignment(horizontal='left'); r += 1
+        if inc:
+            ws3.merge_cells(f'A{r}:H{r}')
+            hc = ws3.cell(row=r, column=1, value='  ⬇ PŘIJÍŽDÍ Z POBOČEK:')
+            hc.font = hfont(C_GH, sz=10); hc.fill = hfill(C_GL); hc.alignment = Alignment(horizontal='left', vertical='center')
+            ws3.row_dimensions[r].height = 20; r += 1
+            sub = ['Z pobočky (ID)','Název','Region zdroje','Počet lidí','Vzdálenost (km)','Čas jízdy (h)','Kategorie','Termín zdroje']
+            for ci, txt in enumerate(sub, 1):
+                cell = ws3.cell(row=r, column=ci, value=txt)
+                cell.font = hfont(C_GH, sz=9); cell.fill = hfill(C_GM)
+                cell.alignment = Alignment(horizontal='center', wrap_text=True); cell.border = bord()
+            ws3.row_dimensions[r].height = 20; r += 1
+            tin = 0
+            for a in sorted(inc, key=lambda x: x['Čas jízdy (h)']):
+                src = inv_c[inv_c['Č.pob']==a['Z pobočky (ID)']]
+                sreg = src['Region'].values[0] if len(src) else ''
+                bg = rbg(a) or C_GL
+                for ci, val in enumerate([a['Z pobočky (ID)'],a['Z pobočky (název)'],sreg,
+                    a['Počet lidí'],a['Vzdálenost (km)'],a['Čas jízdy (h)'],a['Kategorie trasy'],a['Termín odesílatele']], 1):
+                    dc(ws3, r, ci, val, bg)
+                tin += a['Počet lidí']; r += 1
+            is_ok = tin >= req
+            ws3.merge_cells(f'A{r}:D{r}')
+            tc3 = ws3.cell(row=r, column=1, value=f'  CELKEM PŘIJEDE: {tin} / {req} požadováno')
+            tc3.font = hfont(C_GH if is_ok else C_RH, sz=10, bold=True)
+            tc3.fill = hfill(C_GL if is_ok else C_RL); tc3.alignment = Alignment(horizontal='left', vertical='center')
+            ws3.row_dimensions[r].height = 22; r += 1
+        r += 1
+    for col, w in enumerate([14,26,12,11,15,13,16,12], 1): cw(ws3, col, w)
+
+    # Sheet 4: Varování
+    ws4 = wb.create_sheet('Varování')
+    ws4.merge_cells('A1:H1')
+    t = ws4.cell(row=1, column=1, value='VAROVÁNÍ – NESPLNĚNÉ POŽADAVKY')
+    t.font = hfont(sz=12); t.fill = hfill(C_RH); t.alignment = Alignment(horizontal='center', vertical='center')
+    ws4.row_dimensions[1].height = 26
+    if warnings_list:
+        cols_w = ['Termín','Pobočka ID','Název pobočky','Region','Požadavek','Splněno','Nesplněno','% splnění','Důvod']
+        hrow(ws4, 2, cols_w, C_RH)
+        for i, w in enumerate(warnings_list, 3):
+            bg = C_ORA if i%2==0 else C_RL
+            vals = [w['termin'],w['id'],w['name'],w['region'],w['total'],w['filled'],w['missing'],w['pct']/100,w['reason']]
+            for c, val in enumerate(vals, 1):
+                cell = dc(ws4, i, c, val, bg, center=(c!=9))
+                if c == 8: cell.number_format = '0.0%'
+        for col, w in enumerate([11,12,26,9,11,10,11,10,55], 1): cw(ws4, col, w)
+    else:
+        cell = ws4.cell(row=2, column=1, value='✅ Všechny požadavky byly splněny!')
+        cell.font = Font(name='Arial', size=12, bold=True, color=C_GH)
+        cell.fill = hfill(C_GL); cell.alignment = Alignment(horizontal='left', vertical='center')
+        ws4.column_dimensions['A'].width = 50
+
+    # Sheet 5: Statistiky
+    ws5 = wb.create_sheet('Statistiky')
+    ws5.merge_cells('A1:D1')
+    t = ws5.cell(row=1, column=1, value='SOUHRNNÉ STATISTIKY')
+    t.font = hfont(sz=13); t.fill = hfill(C_DARK); t.alignment = Alignment(horizontal='center', vertical='center')
+    ws5.row_dimensions[1].height = 28
+    inv_c2 = inv.dropna(subset=['Č.pob']).copy()
+    treq = int(inv_c2['počet týmů'].fillna(0).sum())
+    tfil = int(df['Počet lidí'].sum()) if len(df) else 0
+    ltrips = int((df['Kategorie trasy']=='Dlouhá (>2.5h)').sum()) if len(df) else 0
+    ltrips2 = int((df['Kategorie trasy']=='LOG záloha').sum()) if len(df) else 0
+    lppl = int(df[df['Kategorie trasy']=='LOG záloha']['Počet lidí'].sum()) if len(df) else 0
+    pct_s = f"{tfil/treq*100:.1f}%" if treq>0 else "N/A"
+    stats = [('Celkem požadovaných lidí', treq), ('Celkem přiřazených lidí', tfil),
+             ('% pokrytí celkem', pct_s), ('Celkem přejezdů', len(df)),
+             ('Standardní přejezdy (≤2.5h)', int((df['Kategorie trasy']=='Standardní (≤2.5h)').sum()) if len(df) else 0),
+             ('Dlouhé přejezdy (>2.5–3.25h)', f'{ltrips} / max 8'),
+             ('Přejezdy LOG záloha', f'{ltrips2} ({lppl} lidí)'),
+             ('Pobočky s nesplněným požadavkem', len(warnings_list)),
+             ('Z toho strukturální problémy', len(structural_notes))]
+    for i, (label, val) in enumerate(stats, 2):
+        ok = (label == '% pokrytí celkem' and tfil >= treq)
+        warn = (label in ['Pobočky s nesplněným požadavkem','Z toho strukturální problémy'] and isinstance(val,int) and val>0)
+        bg = C_GL if ok else (C_RL if warn else (C_LIGHT if i%2==0 else C_WHT))
+        for col, v in [(1, label),(2, val)]:
+            cell = ws5.cell(row=i, column=col, value=v)
+            cell.font = Font(name='Arial', size=11, bold=(col==1))
+            cell.fill = hfill(bg)
+            cell.alignment = Alignment(horizontal='left' if col==1 else 'center', vertical='center', indent=1 if col==1 else 0)
+            cell.border = bord()
+        ws5.row_dimensions[i].height = 22
+    ws5.column_dimensions['A'].width = 40; ws5.column_dimensions['B'].width = 22
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return buf.getvalue()
+
+df, inv, warnings_list, structural_notes, long_used = optimize()
+xlsx_bytes = build_excel(df, inv, warnings_list, structural_notes, long_used)
+
+# Save to FS
+with open('/output.xlsx', 'wb') as f:
+    f.write(xlsx_bytes)
+
+# Return summary JSON
+inv_c = inv.dropna(subset=['Č.pob']).copy()
+treq = int(inv_c['počet týmů'].fillna(0).sum())
+tfil = int(df['Počet lidí'].sum()) if len(df) else 0
+ltrips = int((df['Kategorie trasy']=='Dlouhá (>2.5h)').sum()) if len(df) else 0
+llog   = int((df['Kategorie trasy']=='LOG záloha').sum()) if len(df) else 0
+pct_val = round(tfil/treq*100, 1) if treq > 0 else 100
+
+import json
+json.dumps({
+    'total': treq, 'filled': tfil,
+    'pct': str(pct_val),
+    'trips': len(df),
+    'long_trips': ltrips,
+    'log_trips': llog,
+    'warnings': len(warnings_list),
+    'warn_details': warnings_list
+})
+`;
+}
+
+// ── Boot ───────────────────────────────────────────────────────────────────
+window.addEventListener('load', initPyodide);
+</script>
+</body>
+</html>
